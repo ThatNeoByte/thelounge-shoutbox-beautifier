@@ -4,7 +4,7 @@
 // @version      2.7
 // @description  Reformats chatbot relay messages to appear as direct user messages
 // @author       spindrift
-// @match        *://your-thelounge-domain.com/*
+// @match        *://irc.sander1946.com/*
 // @icon         https://thelounge.chat/favicon.ico
 // @grant        none
 // ==/UserScript==
@@ -88,8 +88,8 @@
         USE_AUTOCOMPLETE: true, // Enable autocomplete for usernames
         USE_DECORATORS: true,   // Enable username decorators
         REMOVE_JOIN_QUIT: false,// Removes join/quit messages
-        DECORATOR_L: '(',       // Will be prepended to username
-        DECORATOR_R: ')',       // Will be appended to username
+        DECORATOR_L: '-',       // Will be prepended to username
+        DECORATOR_R: '',        // Will be appended to username
         METADATA: 'SB',         // Default metadata to be inserted into HTML
     }
 
@@ -106,11 +106,13 @@
     // Handlers should be formatted as objects with the structure:
     // - enabled: true/false to enable/disable
     // - handler: function that takes a message object and returns:
-    //   { username, prefixToRemove, newMessage, metadata } or null if no match
+    //   { username, prefixToRemove, newMessage, metadata, prefix, postfix } or null if no match
     //   - username: what to show the person's nick as
     //   - prefixToRemove: text to remove from message (optional)
     //   - newMessage: the new content of the message, this will override prefixToRemove (optional)
     //   - metadata: string to insert into HTML for CSS targeting (or default to CONFIG.METADATA)
+    //   - prefix: override the default prefix with this one (set to null or leave empty to use default prefix)
+    //   - suffix: override the default suffix with this one (set to null or leave empty to use default suffix)
     //
     // Handler functions should make use of the `msg` object, which contains:
     // - text: textContent of message
@@ -265,6 +267,103 @@
                     metadata: CONFIG.METADATA
                 };
             }
+        },
+        {
+            // Format: [BON-POOL]-[Contribution: Amount]-[Progress: Percentage%]-[By: Username]-[Contribute here: https://darkpeers.org/bon-pool]
+            // Used at: DP
+
+            enabled: true,
+            handler: function (msg) {
+                const match = msg.text.match(/^\[BON-POOL\]\-\[Contribution: ([\d,]+) bon\]\-\[Progress: (\d+)%\]\-\[By: ([^\]]+)\].*$/);
+                if (!match) return null;
+
+                const newMessage = `Contributed <strong>${match[1]}</strong> BON to the pool, the pool is now at <strong>${match[2]}%!</strong>`;
+
+                return {
+                    username: match[3],
+                    newMessage: newMessage,
+                    metadata: CONFIG.METADATA,
+                    prefix: "(@",
+                    suffix: ")",
+                };
+            }
+        },
+        {
+            // Formant: [New-upload|Featured|Internal]-[Tag]-[Type]-[Title]-[Size: Size]-[Link: Link]
+            // Used at: DP
+
+            enabled: true,
+            handler: function (msg) {
+                const match = msg.text.match(/^\[(New-upload|Featured|Internal)\]-\[([^\]]+)\]-\[([^\]]+)\]-\[([^\]]+)\]-\[Size: ([^\]]+)\]-\[Link: ([^\]]+)\]/);
+                if (!match) return null;
+
+                const tag = match[1];
+                const category = match[2];
+                const type = match[3];
+                const title = match[4];
+                const size = match[5];
+                const link = match[6];
+
+                const catEmojis = {
+                    'Movies': '🎬',
+                    'TV': '📺',
+                    'Games': '🎮',
+                    'Music': '🎵',
+                    'Applications': '💾',
+                    'Books': '📚',
+                    'XXX': '🔞'
+                };
+                const emoji = catEmojis[category] || '📁';
+
+                const username = `${tag} ${emoji}`;
+
+                const newMessage = `<span style="color: #00bcd4;">[${type}]</span> ${title} <strong>(${size})</strong> - <a href="${link}" target="_blank" rel="noopener noreferrer" class="link">${link}</a>`;
+
+                return {
+                    username: username,
+                    newMessage: newMessage,
+                    prefix: "(",
+                    suffix: ")",
+                };
+            }
+        },
+        {
+            // Formant: [New-Request]-[Name: Title]-[Category: Category]-[Type: Type]-[Bounty: Amount]-[Link: Link]
+            // Used at: DP
+
+            enabled: true,
+            handler: function (msg) {
+                const match = msg.text.match(/^\[New-Request\]-\[Name: ([^\]]+)\]-\[Category: ([^\]]+)\]-\[Type: ([^\]]+)\]-\[Bounty: ([^\]]+)\]-\[Link: ([^\]]+)\].*$/);
+                if (!match) return null;
+
+                const title = match[1];
+                const category = match[2];
+                const type = match[3];
+                const amount = match[4];
+                const link = match[5];
+
+                const catEmojis = {
+                    'Movies': '🎬',
+                    'TV': '📺',
+                    'Games': '🎮',
+                    'Music': '🎵',
+                    'Applications': '💾',
+                    'Books': '📚',
+                    'XXX': '🔞'
+                };
+                const emoji = catEmojis[category] || '📁';
+
+                const username = `New-Request ${emoji}`;
+
+                const newMessage = `<span style="color: #00bcd4;">[${type}]</span> ${title} <strong>(${amount} BON)</strong> - <a href="${link}" target="_blank" rel="noopener noreferrer" class="link">${link}</a>`;
+
+                return {
+                    username: username,
+                    newMessage: newMessage,
+                    prefix: "(",
+                    suffix: ")",
+                };
+            }
         }
     ];
 
@@ -405,7 +504,7 @@
     }
 
     // Run through format handlers to find a match
-    // Returns { username, prefixToRemove, newMessage, metadata } or null if no match
+    // Returns { username, prefixToRemove, metadata, newMessage, prefix, suffix } or null if no match
     function runFormatHandlers(msg) {
         for (const formatHandler of HANDLERS) {
             if (!formatHandler.enabled) continue; // Skip disabled handlers
@@ -547,7 +646,7 @@
         if (!parsed) return;
 
         // Destructure parsed result
-        const { username, prefixToRemove, newMessage, metadata } = parsed;
+        const { username, prefixToRemove, newMessage, metadata, prefix, suffix } = parsed;
 
         // Check if username changed - if so, we need to change the style and text
         const usernameChanged = (username !== initialUsername);
@@ -561,7 +660,7 @@
 
             // Add the custom decorators
             if (CONFIG.USE_DECORATORS) {
-                fromSpan.textContent = CONFIG.DECORATOR_L + username + CONFIG.DECORATOR_R;
+                fromSpan.textContent = (prefix ?? CONFIG.DECORATOR_L) + username + (suffix ?? CONFIG.DECORATOR_R);
             } else {
                 fromSpan.textContent = username;
             }
@@ -584,7 +683,6 @@
             }
         }
 
-
         // Update the message content using surgical approach or skip content modification
         if (prefixToRemove) {
             // Use surgical DOM modification to preserve event listeners and preview functionality
@@ -596,7 +694,7 @@
 
         // If handler created a completely new message, replace content
         if ( newMessage) {
-            contentSpan.textContent = newMessage;
+            contentSpan.innerHTML = newMessage;
         }
     }
 
