@@ -4,7 +4,7 @@
 // @version      2.7
 // @description  Reformats chatbot relay messages to appear as direct user messages
 // @author       spindrift
-// @match        *://irc.sander1946.com/*
+// @match        *://your-thelounge-domain.com/*
 // @icon         https://thelounge.chat/favicon.ico
 // @grant        none
 // ==/UserScript==
